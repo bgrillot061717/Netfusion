@@ -55,6 +55,15 @@ def _row(r):
     }
 
 # --- Routes ---
+
+# Add a quick exists check endpoint
+@router.get("/exists/{email}")
+def check_user_exists(email: EmailStr, admin=Depends(require_min_role("admin"))):
+    con = connect()
+    r = con.execute("SELECT id FROM users WHERE lower(email)=?", (email.lower(),)).fetchone()
+    return {"exists": bool(r)}
+
+
 @router.get("")
 def list_users(user = Depends(get_current_user)):
     con = connect()
@@ -66,59 +75,40 @@ def list_users(user = Depends(get_current_user)):
     return {"users":[_row(dict(r))]}
 
 @router.post("")
-def admin_create_user(body: AdminCreate, admin = Depends(require_min_role("admin"))):
-    if body.role not in ROLE_ORDER:
-        raise HTTPException(400, "Invalid role")
-    if len(body.password) < 8:
-        raise HTTPException(400, "Password must be at least 8 characters")
+def create_user(body: UserCreate, admin=Depends(require_min_role("admin"))):
     con = connect()
-    ph = pwd_ctx.hash(body.password)
-    try:
-        con.execute(
-            "INSERT INTO users(email,role,password_hash,enabled,created_ts) VALUES (?,?,?,?,strftime('%s','now'))",
-            (body.email.lower(), body.role, ph, 1 if body.enabled else 0)
-        )
-        con.commit()
-    except sqlite3.IntegrityError:
-        raise HTTPException(409, "Email already exists")
-    u = con.execute("SELECT id,email,role,enabled,created_ts FROM users WHERE lower(email)=?", (body.email.lower(),)).fetchone()
-    return _row(dict(u))
+    existing = con.execute("SELECT id FROM users WHERE lower(email)=?", (body.email.lower(),)).fetchone()
+    if existing:
+        raise HTTPException(409, "User with this email already exists")
+    con.execute("INSERT INTO users (email,password,role,enabled) VALUES (?,?,?,?)",
+                (body.email.lower(), hash_password(body.password), body.role, body.enabled))
+    con.commit()
+    return {"status":"ok"}
 
-@router.patch("/{user_id}")
-def admin_update_user(user_id: int, body: AdminUpdate, admin = Depends(require_min_role("admin"))):
+@router.patch("/by-email/{email}")
+def update_user_by_email(email: EmailStr, body: AdminUpdate, admin=Depends(require_min_role("admin"))):
     con = connect()
-    r = con.execute("SELECT id,email,role,enabled FROM users WHERE id=?", (user_id,)).fetchone()
-    if not r: raise HTTPException(404, "User not found")
+    r = con.execute("SELECT * FROM users WHERE lower(email)=?", (email.lower(),)).fetchone()
+    if not r:
+        raise HTTPException(404, "User not found")
 
-    sets = []
-    vals = []
-
-    if body.email is not None:
-        sets.append("email=?"); vals.append(body.email.lower())
-    if body.role is not None:
-        if body.role not in ROLE_ORDER:
-            raise HTTPException(400, "Invalid role")
-        sets.append("role=?"); vals.append(body.role)
+    fields, values = [], []
+    if body.new_password:
+        fields.append("password=?")
+        values.append(hash_password(body.new_password))
+    if body.role:
+        fields.append("role=?")
+        values.append(body.role)
     if body.enabled is not None:
-        sets.append("enabled=?"); vals.append(1 if body.enabled else 0)
+        fields.append("enabled=?")
+        values.append(1 if body.enabled else 0)
 
-    if sets:
-        try:
-            vals.append(user_id)
-            con.execute(f"UPDATE users SET {', '.join(sets)} WHERE id=?", vals)
-            con.commit()
-        except sqlite3.IntegrityError:
-            raise HTTPException(409, "Email already exists")
-
-    if body.new_password is not None:
-        if len(body.new_password) < 8:
-            raise HTTPException(400, "Password must be at least 8 characters")
-        ph = pwd_ctx.hash(body.new_password)
-        con.execute("UPDATE users SET password_hash=? WHERE id=?", (ph, user_id))
+    if fields:
+        q = f"UPDATE users SET {', '.join(fields)} WHERE id=?"
+        con.execute(q, (*values, r["id"]))
         con.commit()
 
-    return {"ok": True}
-
+    return {"status":"ok"}
 @router.post("/change-password")
 def self_change_password(body: SelfChangePassword, me = Depends(get_current_user)):
     if len(body.new_password) < 8:
