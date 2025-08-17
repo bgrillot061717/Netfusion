@@ -1,15 +1,24 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from .auth import router as auth_router
 from .users import router as users_router
 from .maps_api import router as maps_router
 from .endpoints_api import router as endpoints_router
 from .snmp_scan_api import router as snmp_router
+from .bootstrap_admin import ensure_admin
 
 app = FastAPI()
+
+# Ensure there is always an admin user on startup
+ensure_admin()
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.get("/")
