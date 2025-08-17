@@ -10,6 +10,7 @@ from .snmp_scan_api import router as snmp_router
 from .bootstrap_admin import ensure_admin
 from .sites_api import router as sites_router
 from .devices_api import router as devices_router
+from . import unifi_api   # <--- add this
 
 app = FastAPI()
 
@@ -35,3 +36,4 @@ app.include_router(endpoints_router)
 app.include_router(snmp_router)
 app.include_router(sites_router)
 app.include_router(devices_router)
+app.include_router(unifi_api.router)   # <--- add this
