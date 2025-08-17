@@ -8,6 +8,8 @@ from .maps_api import router as maps_router
 from .endpoints_api import router as endpoints_router
 from .snmp_scan_api import router as snmp_router
 from .bootstrap_admin import ensure_admin
+from .sites_api import router as sites_router
+from .devices_api import router as devices_router
 
 app = FastAPI()
 
@@ -31,3 +33,5 @@ app.include_router(users_router)
 app.include_router(maps_router)
 app.include_router(endpoints_router)
 app.include_router(snmp_router)
+app.include_router(sites_router)
+app.include_router(devices_router)
