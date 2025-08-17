@@ -1,6 +1,6 @@
 import os, time
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Response, Request, Cookie
+from fastapi import APIRouter, HTTPException, Response, Request, Cookie, Depends
 from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
 from jose import jwt, JWTError
@@ -13,6 +13,8 @@ JWT_SECRET = os.getenv("AUTH_JWT_SECRET", "dev-insecure-change-me")
 JWT_EXP_MIN = int(os.getenv("AUTH_JWT_EXP_MIN", "10080"))  # 7 days
 COOKIE_NAME = os.getenv("AUTH_COOKIE_NAME", "nf_session")
 
+ROLE_ORDER = ["read_only","user","admin","owner"]
+
 class FirstRunCreate(BaseModel):
     email: EmailStr
     password: str
@@ -23,8 +25,10 @@ class LoginIn(BaseModel):
 
 def _issue_jwt(email: str, role: str):
     now = int(time.time())
-    return jwt.encode({"sub": email, "email": email, "role": role, "iat": now, "exp": now + JWT_EXP_MIN*60},
-                      JWT_SECRET, algorithm="HS256")
+    return jwt.encode(
+        {"sub": email, "email": email, "role": role, "iat": now, "exp": now + JWT_EXP_MIN*60},
+        JWT_SECRET, algorithm="HS256"
+    )
 
 def _decode(token: str):
     return jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
@@ -32,6 +36,25 @@ def _decode(token: str):
 def _set_cookie(resp: Response, token: str):
     resp.set_cookie(COOKIE_NAME, token, httponly=True, samesite="lax", path="/")
 
+# ---------- auth dependencies ----------
+def get_current_user(nf_session: Optional[str] = Cookie(default=None), request: Request = None):
+    token = (request.headers.get("Authorization","").removeprefix("Bearer ").strip() or nf_session)
+    if not token:
+        raise HTTPException(401, "Not authenticated")
+    try:
+        claims = _decode(token)
+    except JWTError:
+        raise HTTPException(401, "Invalid session")
+    return {"email": claims.get("email"), "role": claims.get("role")}
+
+def require_min_role(min_role: str):
+    def dep(user = Depends(get_current_user)):
+        if ROLE_ORDER.index(user["role"]) < ROLE_ORDER.index(min_role):
+            raise HTTPException(403, "Forbidden")
+        return user
+    return dep
+
+# ---------- first-run + login/logout/me ----------
 @router.get("/first-run")
 def first_run_status():
     return {"needed": not has_any_user()}
@@ -44,12 +67,13 @@ def first_run_create(body: FirstRunCreate, response: Response):
         raise HTTPException(400, "Password must be at least 8 characters")
     con = connect()
     ph = pwd.hash(body.password)
+    # first user is OWNER
     con.execute("INSERT INTO users(email,role,password_hash) VALUES (?,?,?)",
-                (body.email.lower(), "admin", ph))
+                (body.email.lower(), "owner", ph))
     con.commit()
-    token = _issue_jwt(body.email.lower(), "admin")
+    token = _issue_jwt(body.email.lower(), "owner")
     _set_cookie(response, token)
-    return {"ok": True, "email": body.email.lower(), "role": "admin"}
+    return {"ok": True, "email": body.email.lower(), "role": "owner"}
 
 @router.post("/login")
 def login(body: LoginIn, response: Response):
@@ -62,15 +86,8 @@ def login(body: LoginIn, response: Response):
     return {"ok": True, "email": u["email"], "role": u["role"]}
 
 @router.get("/me")
-def me(nf_session: Optional[str] = Cookie(default=None), request: Request = None):
-    token = (request.headers.get("Authorization","").removeprefix("Bearer ").strip() or nf_session)
-    if not token:
-        raise HTTPException(401, "Not authenticated")
-    try:
-        claims = _decode(token)
-    except JWTError:
-        raise HTTPException(401, "Invalid session")
-    return {"email": claims.get("email"), "role": claims.get("role")}
+def me(user = Depends(get_current_user)):
+    return {"email": user["email"], "role": user["role"]}
 
 @router.post("/logout")
 def logout(response: Response):

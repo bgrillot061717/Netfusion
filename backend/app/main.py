@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .auth import router as auth_router
-from .map_media import router as map_router
+from .users import router as users_router
 
 app = FastAPI()
 app.add_middleware(
@@ -14,4 +14,4 @@ def root():
     return {"message": "Backend OK"}
 
 app.include_router(auth_router)
-app.include_router(map_router)
+app.include_router(users_router)
