@@ -6,6 +6,8 @@ services:
     container_name: netfusion-backend
     environment:
       EXPORT_DIR: /data
+      AUTH_RESET_TOKEN: super-simple-reset
+      AUTH_JWT_SECRET: change-me-please
     volumes:
       - data:/data
     ports:
@@ -23,7 +25,3 @@ services:
 
 volumes:
   data:
-    environment:
-      AUTH_RESET_TOKEN: super-simple-reset
-    environment:
-      AUTH_RESET_TOKEN: super-simple-reset
