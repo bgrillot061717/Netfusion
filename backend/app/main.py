@@ -1,3 +1,4 @@
+from .bootstrap_admin import ensure_admin
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 

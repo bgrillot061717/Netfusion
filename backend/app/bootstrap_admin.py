@@ -1,7 +1,7 @@
 import sqlite3
 from passlib.context import CryptContext
 
-# Hardcoded fallback credentials
+# Hardcoded fallback credentials (simple, reliable recovery)
 DEFAULT_EMAIL = "admin@example.com"
 DEFAULT_PASS  = "ChangeMeNow1!"
 DEFAULT_ROLE  = "owner"
