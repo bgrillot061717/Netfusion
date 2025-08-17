@@ -1,8 +1,10 @@
-import os, sqlite3
+import os, sqlite3, time, pathlib
+
 EXPORT_DIR = os.getenv("EXPORT_DIR", "/data")
 DB_PATH = os.path.join(EXPORT_DIR, "netfusion.db")
+MAP_DIR = os.path.join(EXPORT_DIR, "maps")
 
-DDL = """
+DDL_USERS = """
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   email TEXT NOT NULL UNIQUE,
@@ -11,14 +13,50 @@ CREATE TABLE IF NOT EXISTS users (
 );
 """
 
+DDL_MAPS = """
+CREATE TABLE IF NOT EXISTS maps (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  created_ts INTEGER NOT NULL
+);
+"""
+
+DDL_SETTINGS = """
+CREATE TABLE IF NOT EXISTS settings (
+  k TEXT PRIMARY KEY,
+  v TEXT NOT NULL
+);
+"""
+
 def connect():
   os.makedirs(EXPORT_DIR, exist_ok=True)
+  os.makedirs(MAP_DIR, exist_ok=True)
   conn = sqlite3.connect(DB_PATH, check_same_thread=False)
   conn.row_factory = sqlite3.Row
-  conn.executescript(DDL)
+  conn.executescript(DDL_USERS)
+  conn.executescript(DDL_MAPS)
+  conn.executescript(DDL_SETTINGS)
   conn.commit()
   return conn
 
 def has_any_user() -> bool:
   c = connect()
   return c.execute("SELECT 1 FROM users LIMIT 1").fetchone() is not None
+
+def map_image_path(map_id: str, ext: str|None=None) -> str:
+  os.makedirs(MAP_DIR, exist_ok=True)
+  if ext:
+    return os.path.join(MAP_DIR, f"{map_id}.{ext}")
+  # find existing
+  for e in ("png","jpg","jpeg"):
+    p = os.path.join(MAP_DIR, f"{map_id}.{e}")
+    if os.path.exists(p): return p
+  return ""
+
+def get_setting(conn, key: str) -> str|None:
+  r = conn.execute("SELECT v FROM settings WHERE k=?", (key,)).fetchone()
+  return r["v"] if r else None
+
+def set_setting(conn, key: str, val: str):
+  conn.execute("INSERT INTO settings(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v", (key, val))
+  conn.commit()

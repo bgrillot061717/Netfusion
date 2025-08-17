@@ -1,8 +1,13 @@
 version: "3.8"
+
 services:
   backend:
     build: ./backend
     container_name: netfusion-backend
+    environment:
+      EXPORT_DIR: /data
+    volumes:
+      - data:/data
     ports:
       - "18080:8080"
     restart: unless-stopped
@@ -10,7 +15,11 @@ services:
   frontend:
     build: ./frontend
     container_name: netfusion-frontend
-    depends_on: [backend]
+    depends_on:
+      - backend
     ports:
       - "8081:80"
     restart: unless-stopped
+
+volumes:
+  data:
