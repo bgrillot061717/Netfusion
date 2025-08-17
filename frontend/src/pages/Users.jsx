@@ -2,14 +2,31 @@ import { useEffect, useState } from "react";
 
 const ROLE_OPTIONS = ["owner","admin","user","read_only"];
 
-/** small helper so errors show real messages instead of [object Object] */
+/** Request helper that formats Pydantic's detail array into a readable string */
 async function request(url, opts = {}) {
   const r = await fetch(url, { credentials: "include", ...opts });
   let text = "";
   let body = null;
   try { text = await r.text(); body = text ? JSON.parse(text) : null; } catch {}
-  const msg = (body && (body.detail || body.error || body.message)) || (text || r.statusText || "Request failed");
+  let msg = r.statusText || "Request failed";
+  if (body) {
+    if (Array.isArray(body.detail)) {
+      // pydantic style: [{loc:[...,field], msg:"...", type:"..."}]
+      msg = body.detail.map(e => {
+        const loc = Array.isArray(e.loc) ? e.loc[e.loc.length - 1] : e.loc;
+        return `${loc}: ${e.msg || e.message || e.type || "invalid"}`;
+      }).join("; ");
+    } else {
+      msg = body.detail || body.error || body.message || text || msg;
+    }
+  } else if (text) {
+    msg = text;
+  }
   return { ok: r.ok, status: r.status, body, msg };
+}
+
+function isValidEmail(s) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s || "");
 }
 
 export default function UsersPage(){
@@ -29,19 +46,17 @@ export default function UsersPage(){
   const [selfPw, setSelfPw] = useState("");
 
   async function loadMe(){
-    try{
-      const { ok, body, msg, status } = await request("/api/auth/me");
-      if(!ok) throw new Error(`${status} ${msg}`);
-      setMe(body);
-    }catch(e){ setErr(String(e.message||e)); }
+    setErr("");
+    const { ok, body, msg, status } = await request("/api/auth/me");
+    if(!ok){ setErr(`${status} ${msg}`); return; }
+    setMe(body);
   }
 
   async function loadUsers(){
-    try{
-      const { ok, body, msg, status } = await request("/api/users");
-      if(!ok) throw new Error(`${status} ${msg}`);
-      setRows(body?.users || []);
-    }catch(e){ setErr(String(e.message||e)); }
+    setErr("");
+    const { ok, body, msg, status } = await request("/api/users");
+    if(!ok){ setErr(`${status} ${msg}`); return; }
+    setRows(body?.users || []);
   }
 
   useEffect(()=>{ loadMe().then(loadUsers); },[]);
@@ -61,9 +76,9 @@ export default function UsersPage(){
   function startEdit(u){
     setFormMode("edit");
     setFormId(u.id);
-    setFormEmail(u.email);
+    setFormEmail(u.email || "");
     setFormPw("");
-    setFormRole(u.role);
+    setFormRole(u.role || "user");
     setFormEnabled(!!u.enabled);
     setErr("");
   }
@@ -72,14 +87,15 @@ export default function UsersPage(){
     setErr("");
     setBusy(true);
     try{
-      if(!isAdmin){
-        setErr("Forbidden"); return;
-      }
+      if(!isAdmin){ setErr("Forbidden"); return; }
+
+      // Common validation
+      if(!formEmail) { setErr("Email required"); return; }
+      if(!isValidEmail(formEmail)) { setErr("Email is not valid"); return; }
+      if(!ROLE_OPTIONS.includes(formRole)) { setErr("Invalid role"); return; }
 
       if(formMode === "add"){
-        if(!formEmail) throw new Error("Email required");
-        if(!formPw || formPw.length < 8) throw new Error("Password must be at least 8 characters");
-
+        if(!formPw || formPw.length < 8) { setErr("Password must be at least 8 characters"); return; }
         const { ok, msg, status } = await request("/api/users", {
           method:"POST",
           headers:{ "Content-Type":"application/json" },
@@ -93,18 +109,10 @@ export default function UsersPage(){
         if(!ok){ setErr(`${status} ${msg}`); return; }
         clearForm();
         await loadUsers();
-
-      } else { // edit
+      } else {
         if(!formId){ setErr("No user selected"); return; }
-
-        const body = {
-          email: formEmail,
-          role: formRole,
-          enabled: formEnabled
-        };
-        if(formPw && formPw.length >= 8){
-          body.new_password = formPw;
-        }
+        const body = { email: formEmail, role: formRole, enabled: formEnabled };
+        if(formPw && formPw.length >= 8) body.new_password = formPw;
 
         const { ok, msg, status } = await request(`/api/users/${formId}`, {
           method:"PATCH",
@@ -115,25 +123,22 @@ export default function UsersPage(){
         clearForm();
         await loadUsers();
       }
-    }catch(e){
-      setErr(String(e?.message ?? e ?? "Submit failed"));
-    }finally{
+    } finally {
       setBusy(false);
     }
   }
 
   async function selfChangePw(){
-    try{
-      if(selfPw.length < 8) throw new Error("Password must be at least 8 characters");
-      const { ok, msg, status } = await request("/api/users/change-password", {
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ new_password: selfPw })
-      });
-      if(!ok) throw new Error(`${status} ${msg}`);
-      setSelfPw("");
-      alert("Password updated.");
-    }catch(e){ setErr(String(e.message||e)); }
+    setErr("");
+    if(selfPw.length < 8){ setErr("Password must be at least 8 characters"); return; }
+    const { ok, msg, status } = await request("/api/users/change-password", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ new_password: selfPw })
+    });
+    if(!ok){ setErr(`${status} ${msg}`); return; }
+    setSelfPw("");
+    alert("Password updated.");
   }
 
   return (
