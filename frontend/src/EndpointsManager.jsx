@@ -65,7 +65,7 @@ export default function EndpointsManager(){
         </label>
         {form.auth_type==="userpass" && <>
           <label>Username<input value={form.username} onChange={e=>setForm({...form,username:e.target.value})}/></label>
-          <label>Password><input type="password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})}/></label>
+          <label>Password<input type="password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})}/></label>
         </>}
         {form.auth_type!=="userpass" && <>
           <label>API Key / Token<input value={form.api_key} onChange={e=>setForm({...form,api_key:e.target.value})}/></label>
@@ -93,7 +93,7 @@ export default function EndpointsManager(){
               </tr>
             </thead>
             <tbody>
-              {items.map(ep=>(
+              {items.length>0 && items.map(ep=>(
                 <tr key={ep.id}>
                   <td style={{borderBottom:'1px solid #f1f5f9',padding:'6px'}}>{ep.name}</td>
                   <td style={{borderBottom:'1px solid #f1f5f9',padding:'6px'}}>{ep.kind}</td>

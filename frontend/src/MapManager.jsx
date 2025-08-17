@@ -72,9 +72,9 @@ export default function MapManager(){
         <table style={{width:'100%',borderCollapse:'collapse'}}>
           <thead>
             <tr>
-              <th style="text-align:left;border-bottom:1px solid #e5e7eb;padding:6px">Name</th>
-              <th style="text-align:left;border-bottom:1px solid #e5e7eb;padding:6px">Active</th>
-              <th style="text-align:left;border-bottom:1px solid #e5e7eb;padding:6px">Actions</th>
+              <th style={{textAlign:'left',borderBottom:'1px solid #e5e7eb',padding:'6px'}}>Name</th>
+              <th style={{textAlign:'left',borderBottom:'1px solid #e5e7eb',padding:'6px'}}>Active</th>
+              <th style={{textAlign:'left',borderBottom:'1px solid #e5e7eb',padding:'6px'}}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -86,9 +86,13 @@ export default function MapManager(){
                   <button className="btn" onClick={()=>makeActive(m.id)} disabled={busy}>Set active</button>
                   <label className="btn">
                     Upload image
-                    <input ref={fileRef} type="file" accept="image/png,image/jpeg"
-                           onChange={e=>e.target.files[0] && uploadTo(m.id, e.target.files[0])}
-                           style={{display:'none'}} />
+                    <input
+                      ref={fileRef}
+                      type="file"
+                      accept="image/png,image/jpeg"
+                      onChange={e=>e.target.files[0] && uploadTo(m.id, e.target.files[0])}
+                      style={{display:'none'}}
+                    />
                   </label>
                 </td>
               </tr>
