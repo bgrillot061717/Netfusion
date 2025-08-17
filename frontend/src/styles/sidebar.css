@@ -1,0 +1,16 @@
+:root{--bg:#f8fafc;--panel:#fff;--border:#e5e7eb;--text:#111827;--muted:#6b7280;--hover:#f3f4f6}
+*{box-sizing:border-box}html,body,#root{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial}
+.app{display:flex;min-height:100vh;width:100%}
+.aside{position:sticky;top:0;height:100vh;background:var(--panel);border-right:1px solid var(--border)}
+.aside-inner{display:flex;flex-direction:column;height:100%}
+.aside-header{display:flex;align-items:center;gap:.5rem;padding:1rem;border-bottom:1px solid var(--border)}
+.aside-title{font-weight:600}
+.aside-nav{flex:1;padding:.5rem;overflow:auto}
+.aside-footer{padding:.75rem;border-top:1px solid var(--border);font-size:.75rem;color:var(--muted)}
+.sidelink{display:flex;align-items:center;gap:.5rem;padding:.5rem .75rem;margin-bottom:.25rem;border-radius:.75rem;text-decoration:none;color:#374151}
+.sidelink:hover{background:var(--hover)}.sidelink.active{background:var(--hover);color:#111827}
+.main{flex:1;min-width:0}.page{padding:1.25rem}.h1{font-size:1.25rem;font-weight:600;margin:0 0 1rem}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:1rem;padding:1rem}
+.btn{display:inline-flex;align-items:center;gap:.5rem;border:1px solid var(--border);padding:.5rem .75rem;border-radius:.75rem;background:#fff;cursor:pointer}
+.toggle{border:none;background:transparent;padding:.25rem .5rem;border-radius:1rem;cursor:pointer}
