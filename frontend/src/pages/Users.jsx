@@ -7,7 +7,19 @@ export default function UsersPage(){
   const [rows, setRows] = useState([]);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const [pwById, setPwById] = useState({}); // temp new passwords keyed by user id
+
+  // add user form (admin only)
+  const [addEmail, setAddEmail] = useState("");
+  const [addPw, setAddPw] = useState("");
+  const [addRole, setAddRole] = useState("user");
+  const [addEnabled, setAddEnabled] = useState(true);
+
+  // per-row edit state
+  const [editingId, setEditingId] = useState(null);
+  const [editEmail, setEditEmail] = useState("");
+  const [editPw, setEditPw] = useState("");
+
+  // self change password
   const [selfPw, setSelfPw] = useState("");
 
   async function loadMe(){
@@ -29,20 +41,50 @@ export default function UsersPage(){
 
   const isAdmin = me && (me.role === "owner" || me.role === "admin");
 
+  async function addUser(){
+    if(!addEmail || addPw.length < 8) { alert("Provide email and a password (≥ 8 chars)"); return; }
+    setBusy(true);
+    try{
+      const r = await fetch("/api/users", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        credentials:"include",
+        body: JSON.stringify({ email:addEmail, password:addPw, role:addRole, enabled:addEnabled })
+      });
+      const j = await r.json().catch(()=>({}));
+      if(!r.ok) throw new Error(j.detail||"Create failed");
+      setAddEmail(""); setAddPw(""); setAddRole("user"); setAddEnabled(true);
+      await load();
+    }catch(e){ alert(e.message); } finally{ setBusy(false); }
+  }
+
+  function startEdit(u){
+    setEditingId(u.id);
+    setEditEmail(u.email);
+    setEditPw("");
+  }
+  function cancelEdit(){
+    setEditingId(null);
+    setEditEmail("");
+    setEditPw("");
+  }
+
   async function saveRow(u){
     setBusy(true);
     try{
-      const body = { role: u.role, enabled: u.enabled };
-      if (pwById[u.id]?.length >= 8) body.new_password = pwById[u.id];
+      const body = {
+        email: editEmail !== u.email ? editEmail : undefined,
+        role: u.role,
+        enabled: u.enabled,
+        new_password: editPw.length >= 8 ? editPw : undefined
+      };
       const r = await fetch(`/api/users/${u.id}`, {
         method:"PATCH", headers:{ "Content-Type":"application/json" },
         credentials:"include", body: JSON.stringify(body)
       });
       const j = await r.json().catch(()=>({}));
       if(!r.ok) throw new Error(j.detail||"Update failed");
-      if (pwById[u.id]) {
-        const next = { ...pwById }; delete next[u.id]; setPwById(next);
-      }
+      cancelEdit();
       await load();
     }catch(e){ alert(e.message); } finally{ setBusy(false); }
   }
@@ -80,40 +122,83 @@ export default function UsersPage(){
           </div>}
         </div>
       ) : (
-        <div className="card">
-          <table style={{width:"100%", borderCollapse:"collapse"}}>
-            <thead>
-              <tr>
-                <th style={{textAlign:"left",borderBottom:"1px solid #e5e7eb",padding:"6px"}}>Email</th>
-                <th style={{textAlign:"left",borderBottom:"1px solid #e5e7eb",padding:"6px"}}>Role</th>
-                <th style={{textAlign:"left",borderBottom:"1px solid #e5e7eb",padding:"6px"}}>Enabled</th>
-                <th style={{textAlign:"left",borderBottom:"1px solid #e5e7eb",padding:"6px"}}>New Password</th>
-                <th style={{textAlign:"left",borderBottom:"1px solid #e5e7eb",padding:"6px"}}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(u=>(
-                <tr key={u.id}>
-                  <td style={{borderBottom:"1px solid #f1f5f9",padding:"6px"}}>{u.email}</td>
-                  <td style={{borderBottom:"1px solid #f1f5f9",padding:"6px"}}>
-                    <select value={u.role} onChange={e=>setRows(rows.map(x=>x.id===u.id?{...x, role:e.target.value}:x))}>
-                      {ROLE_OPTIONS.map(r=><option key={r} value={r}>{r}</option>)}
-                    </select>
-                  </td>
-                  <td style={{borderBottom:"1px solid #f1f5f9",padding:"6px"}}>
-                    <input type="checkbox" checked={u.enabled} onChange={e=>setRows(rows.map(x=>x.id===u.id?{...x, enabled:e.target.checked}:x))}/>
-                  </td>
-                  <td style={{borderBottom:"1px solid #f1f5f9",padding:"6px"}}>
-                    <input type="password" value={pwById[u.id]||""} onChange={e=>setPwById({...pwById, [u.id]: e.target.value})} placeholder="(optional) new pw" />
-                  </td>
-                  <td style={{borderBottom:"1px solid #f1f5f9",padding:"6px"}}>
-                    <button className="btn" onClick={()=>saveRow(u)} disabled={busy}>Save</button>
-                  </td>
+        <>
+          {/* Add user form */}
+          <div className="card" style={{marginBottom:12}}>
+            <h3 style={{marginTop:0}}>Add User</h3>
+            <div style={{display:"grid",gridTemplateColumns:"1.4fr 1fr 1fr 1fr auto",gap:8,alignItems:"center"}}>
+              <input placeholder="email@example.com" value={addEmail} onChange={e=>setAddEmail(e.target.value)} />
+              <input type="password" placeholder="password (≥ 8)" value={addPw} onChange={e=>setAddPw(e.target.value)} />
+              <select value={addRole} onChange={e=>setAddRole(e.target.value)}>
+                {ROLE_OPTIONS.map(r=><option key={r} value={r}>{r}</option>)}
+              </select>
+              <label style={{display:"flex",gap:6,alignItems:"center"}}>
+                <input type="checkbox" checked={addEnabled} onChange={e=>setAddEnabled(e.target.checked)} /> Enabled
+              </label>
+              <button className="btn" onClick={addUser} disabled={busy}>Add</button>
+            </div>
+          </div>
+
+          {/* Users table */}
+          <div className="card">
+            <table style={{width:"100%", borderCollapse:"collapse"}}>
+              <thead>
+                <tr>
+                  <th style={{textAlign:"left",borderBottom:"1px solid #e5e7eb",padding:"6px"}}>Email</th>
+                  <th style={{textAlign:"left",borderBottom:"1px solid #e5e7eb",padding:"6px"}}>Role</th>
+                  <th style={{textAlign:"left",borderBottom:"1px solid #e5e7eb",padding:"6px"}}>Enabled</th>
+                  <th style={{textAlign:"left",borderBottom:"1px solid #e5e7eb",padding:"6px"}}>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {rows.map(u=>{
+                  const editing = editingId === u.id;
+                  return (
+                    <tr key={u.id}>
+                      <td style={{borderBottom:"1px solid #f1f5f9",padding:"6px"}}>
+                        {!editing ? (
+                          u.email
+                        ) : (
+                          <input value={editEmail} onChange={e=>setEditEmail(e.target.value)} />
+                        )}
+                      </td>
+                      <td style={{borderBottom:"1px solid #f1f5f9",padding:"6px"}}>
+                        <select
+                          value={u.role}
+                          onChange={e=>setRows(rows.map(x=>x.id===u.id?{...x, role:e.target.value}:x))}
+                          disabled={!isAdmin}
+                        >
+                          {ROLE_OPTIONS.map(r=><option key={r} value={r}>{r}</option>)}
+                        </select>
+                      </td>
+                      <td style={{borderBottom:"1px solid #f1f5f9",padding:"6px"}}>
+                        <input
+                          type="checkbox"
+                          checked={u.enabled}
+                          onChange={e=>setRows(rows.map(x=>x.id===u.id?{...x, enabled:e.target.checked}:x))}
+                        />
+                      </td>
+                      <td style={{borderBottom:"1px solid #f1f5f9",padding:"6px"}}>
+                        {!editing ? (
+                          <div style={{display:"flex",gap:8}}>
+                            <button className="btn" onClick={()=>startEdit(u)}>Edit</button>
+                            <button className="btn" onClick={()=>saveRow(u)} disabled={busy}>Save</button>
+                          </div>
+                        ) : (
+                          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                            <input type="password" placeholder="(optional) new password (≥8)" value={editPw} onChange={e=>setEditPw(e.target.value)} />
+                            <button className="btn" onClick={()=>saveRow(u)} disabled={busy}>Save</button>
+                            <button className="btn" onClick={cancelEdit}>Cancel</button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );

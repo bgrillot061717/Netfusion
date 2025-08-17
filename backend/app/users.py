@@ -2,18 +2,19 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, EmailStr
 import sqlite3, time
+from passlib.context import CryptContext
 from .auth import require_min_role, get_current_user
 from .db import connect, _has_col
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
+pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 # --- DB migration for users.enabled + users.created_ts (idempotent) ---
 def _migrate_users():
     con = connect()
-    # add created_ts if missing
     if not _has_col(con, "users", "created_ts"):
         con.execute("ALTER TABLE users ADD COLUMN created_ts INTEGER NOT NULL DEFAULT (strftime('%s','now'))")
-    # add enabled if missing
     if not _has_col(con, "users", "enabled"):
         con.execute("ALTER TABLE users ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1")
     con.commit()
@@ -27,13 +28,19 @@ class UserRow(BaseModel):
     enabled: bool
     created_ts: int
 
+class AdminCreate(BaseModel):
+    email: EmailStr
+    password: str
+    role: str = "user"           # owner|admin|user|read_only
+    enabled: bool = True
+
 class AdminUpdate(BaseModel):
-    role: Optional[str] = None               # owner|admin|user|read_only
+    email: Optional[EmailStr] = None
+    role: Optional[str] = None
     enabled: Optional[bool] = None
-    new_password: Optional[str] = None       # only admin/owner can set others' pw
+    new_password: Optional[str] = None
 
 class SelfChangePassword(BaseModel):
-    current_password: Optional[str] = None   # optional MVP
     new_password: str
 
 ROLE_ORDER = ["read_only","user","admin","owner"]
@@ -52,53 +59,74 @@ def _row(r):
 def list_users(user = Depends(get_current_user)):
     con = connect()
     if user["role"] in ("owner","admin"):
-        rows = con.execute("SELECT id,email,role,enabled,created_ts FROM users ORDER BY id").fetchall()
+        rows = con.execute("SELECT id,email,role,enabled,created_ts FROM users ORDER BY email").fetchall()
         return {"users":[_row(dict(r)) for r in rows]}
-    # non-admins see only themselves
-    r = con.execute("SELECT id,email,role,enabled,created_ts FROM users WHERE email=?", (user["email"].lower(),)).fetchone()
+    r = con.execute("SELECT id,email,role,enabled,created_ts FROM users WHERE lower(email)=?", (user["email"].lower(),)).fetchone()
     if not r: raise HTTPException(404, "Not found")
     return {"users":[_row(dict(r))]}
+
+@router.post("")
+def admin_create_user(body: AdminCreate, admin = Depends(require_min_role("admin"))):
+    if body.role not in ROLE_ORDER:
+        raise HTTPException(400, "Invalid role")
+    if len(body.password) < 8:
+        raise HTTPException(400, "Password must be at least 8 characters")
+    con = connect()
+    ph = pwd_ctx.hash(body.password)
+    try:
+        con.execute(
+            "INSERT INTO users(email,role,password_hash,enabled,created_ts) VALUES (?,?,?,?,strftime('%s','now'))",
+            (body.email.lower(), body.role, ph, 1 if body.enabled else 0)
+        )
+        con.commit()
+    except sqlite3.IntegrityError:
+        raise HTTPException(409, "Email already exists")
+    u = con.execute("SELECT id,email,role,enabled,created_ts FROM users WHERE lower(email)=?", (body.email.lower(),)).fetchone()
+    return _row(dict(u))
 
 @router.patch("/{user_id}")
 def admin_update_user(user_id: int, body: AdminUpdate, admin = Depends(require_min_role("admin"))):
     con = connect()
     r = con.execute("SELECT id,email,role,enabled FROM users WHERE id=?", (user_id,)).fetchone()
     if not r: raise HTTPException(404, "User not found")
-    fields = []
+
+    sets = []
     vals = []
+
+    if body.email is not None:
+        sets.append("email=?"); vals.append(body.email.lower())
     if body.role is not None:
         if body.role not in ROLE_ORDER:
             raise HTTPException(400, "Invalid role")
-        fields.append("role=?"); vals.append(body.role)
+        sets.append("role=?"); vals.append(body.role)
     if body.enabled is not None:
-        fields.append("enabled=?"); vals.append(1 if body.enabled else 0)
+        sets.append("enabled=?"); vals.append(1 if body.enabled else 0)
+
+    if sets:
+        try:
+            vals.append(user_id)
+            con.execute(f"UPDATE users SET {', '.join(sets)} WHERE id=?", vals)
+            con.commit()
+        except sqlite3.IntegrityError:
+            raise HTTPException(409, "Email already exists")
+
     if body.new_password is not None:
-        # set below after fields update (uses passlib from auth module)
-        pass
-    if fields:
-        vals.append(user_id)
-        con.execute(f"UPDATE users SET {', '.join(fields)} WHERE id=?", vals)
-        con.commit()
-    if body.new_password is not None:
-        # hash via passlib context from auth
-        from passlib.context import CryptContext
-        pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
-        ph = pwd.hash(body.new_password)
+        if len(body.new_password) < 8:
+            raise HTTPException(400, "Password must be at least 8 characters")
+        ph = pwd_ctx.hash(body.new_password)
         con.execute("UPDATE users SET password_hash=? WHERE id=?", (ph, user_id))
         con.commit()
+
     return {"ok": True}
 
 @router.post("/change-password")
-def self_change_password(body: SelfChangePassword, me = Depends(require_min_role("read_only"))):
-    if not body.new_password or len(body.new_password) < 8:
+def self_change_password(body: SelfChangePassword, me = Depends(get_current_user)):
+    if len(body.new_password) < 8:
         raise HTTPException(400, "Password must be at least 8 characters")
     con = connect()
-    r = con.execute("SELECT id,password_hash FROM users WHERE email=?", (me["email"].lower(),)).fetchone()
+    r = con.execute("SELECT id FROM users WHERE email=?", (me["email"].lower(),)).fetchone()
     if not r: raise HTTPException(404, "Not found")
-    # (optional) verify current password; skip for MVP
-    from passlib.context import CryptContext
-    pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    ph = pwd.hash(body.new_password)
+    ph = pwd_ctx.hash(body.new_password)
     con.execute("UPDATE users SET password_hash=? WHERE id=?", (ph, r["id"]))
     con.commit()
     return {"ok": True}
