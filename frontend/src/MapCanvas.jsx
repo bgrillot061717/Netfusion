@@ -15,18 +15,16 @@ export default function MapCanvas(){
       setStatus({ exists:false });
     }
   }
-
   useEffect(()=>{ refresh(); },[]);
 
-  async function onUpload(e){
-    const f = e.target.files?.[0];
-    if(!f) return;
-    if(!['image/png','image/jpeg'].includes(f.type)){
+  async function handleFile(file){
+    if(!file) return;
+    if(!['image/png','image/jpeg'].includes(file.type)){
       alert('Please select a PNG or JPG.');
       return;
     }
     const fd = new FormData();
-    fd.append('file', f);
+    fd.append('file', file);
     setBusy(true);
     try{
       const r = await fetch('/api/map', { method:'POST', body: fd, credentials:'include' });
@@ -39,6 +37,10 @@ export default function MapCanvas(){
       setBusy(false);
       if(fileRef.current) fileRef.current.value = '';
     }
+  }
+
+  async function onFileChange(e){
+    await handleFile(e.target.files?.[0]);
   }
 
   async function removeMap(){
@@ -55,24 +57,31 @@ export default function MapCanvas(){
   // Canvas area
   return (
     <div style={{marginTop:16}}>
+      {/* hidden file input we trigger with a visible button */}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/png,image/jpeg"
+        onChange={onFileChange}
+        style={{ display: 'none' }}
+      />
+
       {status.exists ? (
         <div style={{display:'grid', gap:12}}>
           <div style={{
             border:'1px solid #e5e7eb', borderRadius:12, overflow:'hidden',
             width:'100%', height:'70vh', background:'#f8fafc', display:'grid', placeItems:'center'
           }}>
-            {/* Use max-height/width to fit */ }
             <img
               src={status.url}
               alt="Network map"
               style={{maxWidth:'100%', maxHeight:'100%', objectFit:'contain'}}
             />
           </div>
-          <div style={{display:'flex', gap:8}}>
-            <label className="btn">
+          <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+            <button className="btn" onClick={()=>fileRef.current?.click()} disabled={busy}>
               Replace Map
-              <input ref={fileRef} type="file" accept="image/png,image/jpeg" onChange={onUpload} style={{display:'none'}} />
-            </label>
+            </button>
             <button className="btn" onClick={removeMap} disabled={busy}>Remove</button>
           </div>
         </div>
@@ -89,12 +98,13 @@ export default function MapCanvas(){
             <div className="card" style={{maxWidth:520}}>
               <h3 style={{marginTop:0}}>Upload a background map (optional)</h3>
               <p style={{marginTop:0}}>PNG or JPG recommended. You can replace it anytime.</p>
-              <div style={{display:'flex', gap:8, alignItems:'center'}}>
-                <label className="btn">
-                  Choose Image
-                  <input ref={fileRef} type="file" accept="image/png,image/jpeg" onChange={onUpload} style={{display:'none'}} />
-                </label>
-                <button className="btn" onClick={()=>setBlank(true)} disabled={busy}>Skip for now</button>
+              <div style={{display:'flex', gap:8, alignItems:'center', flexWrap:'wrap'}}>
+                <button className="btn" onClick={()=>fileRef.current?.click()} disabled={busy}>
+                  Upload Image
+                </button>
+                <button className="btn" onClick={()=>setBlank(true)} disabled={busy}>
+                  Skip for now
+                </button>
               </div>
             </div>
             <div style={{
