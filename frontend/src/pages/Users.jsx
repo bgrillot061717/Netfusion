@@ -11,7 +11,6 @@ async function request(url, opts = {}) {
   let msg = r.statusText || "Request failed";
   if (body) {
     if (Array.isArray(body.detail)) {
-      // pydantic style: [{loc:[...,field], msg:"...", type:"..."}]
       msg = body.detail.map(e => {
         const loc = Array.isArray(e.loc) ? e.loc[e.loc.length - 1] : e.loc;
         return `${loc}: ${e.msg || e.message || e.type || "invalid"}`;
@@ -37,6 +36,7 @@ export default function UsersPage(){
   // unified form state (add OR edit)
   const [formMode, setFormMode] = useState("add"); // "add" | "edit"
   const [formId, setFormId] = useState(null);
+  const [formOrigEmail, setFormOrigEmail] = useState(""); // for 404 fallback
   const [formEmail, setFormEmail] = useState("");
   const [formPw, setFormPw] = useState(""); // optional in edit
   const [formRole, setFormRole] = useState("user");
@@ -66,6 +66,7 @@ export default function UsersPage(){
   function clearForm(){
     setFormMode("add");
     setFormId(null);
+    setFormOrigEmail("");
     setFormEmail("");
     setFormPw("");
     setFormRole("user");
@@ -74,10 +75,10 @@ export default function UsersPage(){
   }
 
   function startEdit(u){
-    // store as number if possible
     const uid = typeof u.id === "string" ? parseInt(u.id, 10) : u.id;
     setFormMode("edit");
     setFormId(Number.isFinite(uid) ? uid : u.id);
+    setFormOrigEmail((u.email || "").toLowerCase());
     setFormEmail(u.email || "");
     setFormPw("");
     setFormRole(u.role || "user");
@@ -112,19 +113,47 @@ export default function UsersPage(){
         clearForm();
         await loadUsers();
       } else {
-        if(formId == null){ setErr("No user selected"); return; }
-        const uid = typeof formId === "string" ? parseInt(formId, 10) : formId;
-        if(!Number.isFinite(uid)) { setErr("Internal error: invalid user id"); return; }
+        if(formId == null && !formOrigEmail){ setErr("No user selected"); return; }
 
         const body = { email: formEmail, role: formRole, enabled: formEnabled };
         if(formPw && formPw.length >= 8) body.new_password = formPw;
 
-        const { ok, msg, status } = await request(`/api/users/${uid}`, {
+        // Try PATCH by numeric id first (if we have one)
+        let triedById = false;
+        if(formId != null){
+          const uid = typeof formId === "string" ? parseInt(formId, 10) : formId;
+          if(Number.isFinite(uid)){
+            triedById = true;
+            const r1 = await request(`/api/users/${uid}`, {
+              method:"PATCH",
+              headers:{ "Content-Type":"application/json" },
+              body: JSON.stringify(body)
+            });
+            if(r1.ok){
+              clearForm();
+              await loadUsers();
+              return;
+            }
+            // If the only failure is 404 (id mismatch), we will try by-email fallback below
+            if(r1.status !== 404){
+              setErr(`${r1.status} ${r1.msg}`);
+              return;
+            }
+          }
+        }
+
+        // Fallback: PATCH by email (use original email captured on edit start)
+        const targetEmail = (formOrigEmail || formEmail).toLowerCase();
+        const r2 = await request(`/api/users/by-email/${encodeURIComponent(targetEmail)}`, {
           method:"PATCH",
           headers:{ "Content-Type":"application/json" },
           body: JSON.stringify(body)
         });
-        if(!ok){ setErr(`${status} ${msg}`); return; }
+        if(!r2.ok){
+          const note = triedById ? " (id and email fallback both failed)" : "";
+          setErr(`${r2.status} ${r2.msg}${note}`);
+          return;
+        }
         clearForm();
         await loadUsers();
       }
