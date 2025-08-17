@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-export default function MapManager({ onChange }){
+export default function MapManager(){
   const [list, setList] = useState([]);
   const [active, setActive] = useState(null);
   const [err, setErr] = useState("");
@@ -15,7 +15,6 @@ export default function MapManager({ onChange }){
       const j = await r.json();
       setList(j.maps || []);
       setActive(j.active_id || null);
-      if (onChange) onChange(j.active_id || null);
     }catch(e){ setErr('Failed to load maps'); }
   }
 
@@ -30,8 +29,7 @@ export default function MapManager({ onChange }){
         credentials:'include', body: JSON.stringify({ name })
       });
       if(!r.ok){ throw new Error(await r.text()); }
-      setName("");
-      await load();
+      setName(""); await load();
     }catch(e){ alert(e.message || 'Create failed'); }
     finally{ setBusy(false); }
   }
@@ -50,8 +48,7 @@ export default function MapManager({ onChange }){
   }
 
   async function uploadTo(id, file){
-    const fd = new FormData();
-    fd.append('file', file);
+    const fd = new FormData(); fd.append('file', file);
     setBusy(true);
     try{
       const r = await fetch(`/api/maps/${id}/image`, { method:'POST', body:fd, credentials:'include' });
@@ -59,8 +56,7 @@ export default function MapManager({ onChange }){
       await load();
     }catch(e){ alert(e.message||'Upload failed'); }
     finally{
-      setBusy(false);
-      if (fileRef.current) fileRef.current.value = '';
+      setBusy(false); if (fileRef.current) fileRef.current.value = '';
     }
   }
 
@@ -76,9 +72,9 @@ export default function MapManager({ onChange }){
         <table style={{width:'100%',borderCollapse:'collapse'}}>
           <thead>
             <tr>
-              <th style={{textAlign:'left',borderBottom:'1px solid #e5e7eb',padding:'6px'}}>Name</th>
-              <th style={{textAlign:'left',borderBottom:'1px solid #e5e7eb',padding:'6px'}}>Active</th>
-              <th style={{textAlign:'left',borderBottom:'1px solid #e5e7eb',padding:'6px'}}>Actions</th>
+              <th style="text-align:left;border-bottom:1px solid #e5e7eb;padding:6px">Name</th>
+              <th style="text-align:left;border-bottom:1px solid #e5e7eb;padding:6px">Active</th>
+              <th style="text-align:left;border-bottom:1px solid #e5e7eb;padding:6px">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -86,7 +82,7 @@ export default function MapManager({ onChange }){
               <tr key={m.id}>
                 <td style={{borderBottom:'1px solid #f1f5f9',padding:'6px'}}>{m.name}</td>
                 <td style={{borderBottom:'1px solid #f1f5f9',padding:'6px'}}>{active===m.id?'Yes':'No'}</td>
-                <td style={{borderBottom:'1px solid #f1f5f9',padding:'6px',display:'flex',gap:8}}>
+                <td style={{borderBottom:'1px solid #f1f5f9',padding:'6px',display:'flex',gap:8,flexWrap:'wrap'}}>
                   <button className="btn" onClick={()=>makeActive(m.id)} disabled={busy}>Set active</button>
                   <label className="btn">
                     Upload image

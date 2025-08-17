@@ -28,14 +28,29 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 """
 
+DDL_ENDPOINTS = """
+CREATE TABLE IF NOT EXISTS endpoints (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL,          -- unifi | auvik | generic
+  address TEXT NOT NULL,       -- base url or host/ip
+  auth_type TEXT NOT NULL,     -- userpass | apikey | token
+  username TEXT,
+  password TEXT,               -- NOTE: stored as plain text for MVP; replace later
+  api_key TEXT,
+  site TEXT,
+  notes TEXT,
+  created_ts INTEGER NOT NULL
+);
+"""
+
 def connect():
   os.makedirs(EXPORT_DIR, exist_ok=True)
   os.makedirs(MAP_DIR, exist_ok=True)
   conn = sqlite3.connect(DB_PATH, check_same_thread=False)
   conn.row_factory = sqlite3.Row
-  conn.executescript(DDL_USERS)
-  conn.executescript(DDL_MAPS)
-  conn.executescript(DDL_SETTINGS)
+  for ddl in (DDL_USERS, DDL_MAPS, DDL_SETTINGS, DDL_ENDPOINTS):
+    conn.executescript(ddl)
   conn.commit()
   return conn
 
@@ -47,7 +62,6 @@ def map_image_path(map_id: str, ext: str|None=None) -> str:
   os.makedirs(MAP_DIR, exist_ok=True)
   if ext:
     return os.path.join(MAP_DIR, f"{map_id}.{ext}")
-  # find existing
   for e in ("png","jpg","jpeg"):
     p = os.path.join(MAP_DIR, f"{map_id}.{e}")
     if os.path.exists(p): return p
