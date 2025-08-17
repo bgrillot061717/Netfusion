@@ -8,7 +8,7 @@ export default function Login({ onLoggedIn }) {
   const [firstRun, setFirstRun] = useState(false);
   const [busy, setBusy] = useState(false);
   const [resetMode, setResetMode] = useState(false);
-  const [resetToken, setResetToken] = useState(""); // AUTH_RESET_TOKEN from server env
+  const [resetToken, setResetToken] = useState("");
 
   useEffect(() => {
     fetch('/api/auth/first-run', { credentials: 'include' })
@@ -44,8 +44,8 @@ export default function Login({ onLoggedIn }) {
   }
 
   return (
-    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-      <form onSubmit={submit} style={{display:"flex",flexDirection:"column",gap:10,border:"1px solid #4444",padding:20,borderRadius:10,width:340,background:"#fff"}}>
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:16,background:"#f8fafc"}}>
+      <form onSubmit={submit} style={{display:"flex",flexDirection:"column",gap:10,border:"1px solid #e5e7eb",padding:20,borderRadius:10,width:360,background:"#fff"}}>
         <h2 style={{margin:0}}>
           {resetMode ? "Reset password" : (firstRun ? "Set up admin" : "Sign in")}
         </h2>
@@ -57,16 +57,17 @@ export default function Login({ onLoggedIn }) {
         </label>
         {resetMode && (
           <label>Reset token
-            <input value={resetToken} onChange={e=>setResetToken(e.target.value)} placeholder="Set on server ENV: AUTH_RESET_TOKEN" required />
+            <input value={resetToken} onChange={e=>setResetToken(e.target.value)} placeholder="AUTH_RESET_TOKEN from server" required />
           </label>
         )}
-        {err && <div style={{color:"#e63946"}}>{err}</div>}
-        <button type="submit" disabled={busy}>{busy ? "Working..." : (resetMode ? "Reset" : (firstRun ? "Create Admin" : "Sign In"))}</button>
-        {!firstRun && (
-          <button type="button" className="btn" onClick={()=>setResetMode(m=>!m)} style={{marginTop:6}}>
-            {resetMode ? "Back to sign in" : "Forgot password?"}
-          </button>
-        )}
+        {err && <div style={{color:"#e11d48"}}>{err}</div>}
+        <button type="submit" disabled={busy}>
+          {busy ? "Working..." : (resetMode ? "Reset password" : (firstRun ? "Create Admin" : "Sign In"))}
+        </button>
+        {/* Always show the toggle so it's easy to find */}
+        <button type="button" className="btn" onClick={()=>setResetMode(m=>!m)} style={{marginTop:6}}>
+          {resetMode ? "Back to sign in" : "Forgot password?"}
+        </button>
       </form>
     </div>
   );
