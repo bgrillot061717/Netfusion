@@ -22,5 +22,5 @@ COPY backend/app /app/app
 # Where the SQLite DB & map images live
 ENV EXPORT_DIR=/data
 
-EXPOSE 8080
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+EXPOSE 18080
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "18080"]
