@@ -83,8 +83,8 @@ def first_run_create(body: FirstRunCreate, response: Response):
 @router.post("/login")
 def login(body: LoginIn, response: Response):
     con = connect()
-    u = con.execute("SELECT email,role,password_hash FROM users WHERE email=?", (body.email.lower(),)).fetchone()
-    if not u or not pwd.verify(body.password, u["password_hash"]):
+    u = con.execute("SELECT email,role,password_hash,enabled FROM users WHERE email=?", (body.email.lower(),)).fetchone()
+    if (not u) or (u.get('enabled') is not None and int(u['enabled']) == 0) or (not pwd.verify(body.password, u['password_hash'])):
         raise HTTPException(401, "Invalid credentials")
     token = _issue_jwt(u["email"], u["role"])
     _set_cookie(response, token)
