@@ -1,0 +1,16 @@
+version: "3.8"
+services:
+  backend:
+    build: ./backend
+    container_name: netfusion-backend
+    ports:
+      - "18080:8080"
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: netfusion-frontend
+    depends_on: [backend]
+    ports:
+      - "8081:80"
+    restart: unless-stopped
