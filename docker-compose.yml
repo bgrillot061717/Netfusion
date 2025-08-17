@@ -25,3 +25,5 @@ volumes:
   data:
     environment:
       AUTH_RESET_TOKEN: super-simple-reset
+    environment:
+      AUTH_RESET_TOKEN: super-simple-reset
