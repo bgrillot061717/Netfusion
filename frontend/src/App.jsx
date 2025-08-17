@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiMe, apiLogout } from "./auth";
 import Login from "./Login";
+import MapCanvas from "./MapCanvas";
 
 export default function App(){
   const [user, setUser] = useState(null);
@@ -15,7 +16,7 @@ export default function App(){
           <button onClick={async()=>{ await apiLogout(); setUser(null); }}>Logout</button>
         </div>
       </div>
-      <p style={{marginTop:16}}>Welcome! This is your app shell after login.</p>
+      <MapCanvas />
     </div>
   );
 }
