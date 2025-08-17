@@ -12,6 +12,7 @@ pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
 JWT_SECRET = os.getenv("AUTH_JWT_SECRET", "dev-insecure-change-me")
 JWT_EXP_MIN = int(os.getenv("AUTH_JWT_EXP_MIN", "10080"))  # 7 days
 COOKIE_NAME = os.getenv("AUTH_COOKIE_NAME", "nf_session")
+RESET_TOKEN = os.getenv("AUTH_RESET_TOKEN", "dev-reset")   # <<< simple shared token
 
 ROLE_ORDER = ["read_only","user","admin","owner"]
 
@@ -22,6 +23,11 @@ class FirstRunCreate(BaseModel):
 class LoginIn(BaseModel):
     email: EmailStr
     password: str
+
+class ResetIn(BaseModel):
+    email: EmailStr
+    new_password: str
+    token: str
 
 def _issue_jwt(email: str, role: str):
     now = int(time.time())
@@ -67,7 +73,6 @@ def first_run_create(body: FirstRunCreate, response: Response):
         raise HTTPException(400, "Password must be at least 8 characters")
     con = connect()
     ph = pwd.hash(body.password)
-    # first user is OWNER
     con.execute("INSERT INTO users(email,role,password_hash) VALUES (?,?,?)",
                 (body.email.lower(), "owner", ph))
     con.commit()
@@ -93,3 +98,24 @@ def me(user = Depends(get_current_user)):
 def logout(response: Response):
     response.delete_cookie(COOKIE_NAME, path="/")
     return {"ok": True}
+
+# ---------- simple reset password (temporary, shared token) ----------
+@router.post("/reset-password")
+def reset_password(body: ResetIn):
+    if body.token != RESET_TOKEN:
+        raise HTTPException(401, "Invalid reset token")
+    if len(body.new_password) < 8:
+        raise HTTPException(400, "Password must be at least 8 characters")
+    con = connect()
+    ph = pwd.hash(body.new_password)
+    # update if exists; otherwise create as owner (so you can recover access)
+    u = con.execute("SELECT id FROM users WHERE email=?", (body.email.lower(),)).fetchone()
+    if u:
+        con.execute("UPDATE users SET password_hash=? WHERE id=?", (ph, u["id"]))
+        con.commit()
+        return {"ok": True, "updated": True}
+    else:
+        con.execute("INSERT INTO users(email,role,password_hash) VALUES (?,?,?)",
+                    (body.email.lower(), "owner", ph))
+        con.commit()
+        return {"ok": True, "created": True}
