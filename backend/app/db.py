@@ -34,9 +34,9 @@ CREATE TABLE IF NOT EXISTS endpoints (
   name TEXT NOT NULL,
   kind TEXT NOT NULL,          -- unifi | auvik | generic
   address TEXT NOT NULL,       -- base url or host/ip
-  auth_type TEXT NOT NULL,     -- userpass | apikey | token
+  auth_type TEXT NOT NULL,     -- userpass | apikey | token (MVP)
   username TEXT,
-  password TEXT,               -- NOTE: stored as plain text for MVP; replace later
+  password TEXT,
   api_key TEXT,
   site TEXT,
   notes TEXT,
@@ -52,7 +52,23 @@ def connect():
   for ddl in (DDL_USERS, DDL_MAPS, DDL_SETTINGS, DDL_ENDPOINTS):
     conn.executescript(ddl)
   conn.commit()
+  _migrate(conn)
   return conn
+
+def _has_col(conn, table, col):
+  rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+  return any(r["name"] == col for r in rows)
+
+def _migrate(conn):
+  # add 'enabled'
+  if not _has_col(conn, "endpoints", "enabled"):
+    conn.execute("ALTER TABLE endpoints ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1")
+  # add SNMP fields
+  if not _has_col(conn, "endpoints", "snmp_version"):
+    conn.execute("ALTER TABLE endpoints ADD COLUMN snmp_version TEXT")
+  if not _has_col(conn, "endpoints", "snmp_community"):
+    conn.execute("ALTER TABLE endpoints ADD COLUMN snmp_community TEXT")
+  conn.commit()
 
 def has_any_user() -> bool:
   c = connect()
