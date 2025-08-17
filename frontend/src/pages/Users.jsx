@@ -74,8 +74,10 @@ export default function UsersPage(){
   }
 
   function startEdit(u){
+    // store as number if possible
+    const uid = typeof u.id === "string" ? parseInt(u.id, 10) : u.id;
     setFormMode("edit");
-    setFormId(u.id);
+    setFormId(Number.isFinite(uid) ? uid : u.id);
     setFormEmail(u.email || "");
     setFormPw("");
     setFormRole(u.role || "user");
@@ -110,11 +112,14 @@ export default function UsersPage(){
         clearForm();
         await loadUsers();
       } else {
-        if(!formId){ setErr("No user selected"); return; }
+        if(formId == null){ setErr("No user selected"); return; }
+        const uid = typeof formId === "string" ? parseInt(formId, 10) : formId;
+        if(!Number.isFinite(uid)) { setErr("Internal error: invalid user id"); return; }
+
         const body = { email: formEmail, role: formRole, enabled: formEnabled };
         if(formPw && formPw.length >= 8) body.new_password = formPw;
 
-        const { ok, msg, status } = await request(`/api/users/${formId}`, {
+        const { ok, msg, status } = await request(`/api/users/${uid}`, {
           method:"PATCH",
           headers:{ "Content-Type":"application/json" },
           body: JSON.stringify(body)
