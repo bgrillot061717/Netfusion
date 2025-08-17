@@ -6,102 +6,125 @@ export default function UsersPage(){
   const [me, setMe] = useState(null);
   const [rows, setRows] = useState([]);
   const [err, setErr] = useState("");
+
+  // Top form state (used for both Add and Update)
+  const [formMode, setFormMode] = useState("add"); // "add" | "edit"
+  const [formId, setFormId] = useState(null);      // only in edit
+  const [formEmail, setFormEmail] = useState("");
+  const [formPw, setFormPw] = useState("");        // optional on edit
+  const [formRole, setFormRole] = useState("user");
+  const [formEnabled, setFormEnabled] = useState(true);
+
   const [busy, setBusy] = useState(false);
-
-  // add user form (admin only)
-  const [addEmail, setAddEmail] = useState("");
-  const [addPw, setAddPw] = useState("");
-  const [addRole, setAddRole] = useState("user");
-  const [addEnabled, setAddEnabled] = useState(true);
-
-  // per-row edit state
-  const [editingId, setEditingId] = useState(null);
-  const [editEmail, setEditEmail] = useState("");
-  const [editPw, setEditPw] = useState("");
-
-  // self change password
-  const [selfPw, setSelfPw] = useState("");
 
   async function loadMe(){
     try{
       const r = await fetch("/api/auth/me", { credentials:"include" });
       if(!r.ok) throw new Error("Not logged in");
       setMe(await r.json());
-    }catch(e){ setErr(e.message); }
+    }catch(e){ setErr(String(e.message||e)); }
   }
-  async function load(){
+  async function loadUsers(){
     try{
       const r = await fetch("/api/users", { credentials:"include" });
-      const j = await r.json();
-      if(!r.ok) throw new Error(j.detail||"Failed to load users");
-      setRows(j.users||[]);
-    }catch(e){ setErr(e.message); }
+      const j = await r.json().catch(()=>({}));
+      if(!r.ok) throw new Error(j.detail || j.error || "Failed to load users");
+      setRows(j.users || []);
+    }catch(e){ setErr(String(e.message||e)); }
   }
-  useEffect(()=>{ loadMe().then(load); },[]);
+  useEffect(()=>{ loadMe().then(loadUsers); },[]);
 
   const isAdmin = me && (me.role === "owner" || me.role === "admin");
 
-  async function addUser(){
-    if(!addEmail || addPw.length < 8) { alert("Provide email and a password (≥ 8 chars)"); return; }
-    setBusy(true);
-    try{
-      const r = await fetch("/api/users", {
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        credentials:"include",
-        body: JSON.stringify({ email:addEmail, password:addPw, role:addRole, enabled:addEnabled })
-      });
-      const j = await r.json().catch(()=>({}));
-      if(!r.ok) throw new Error(j.detail||"Create failed");
-      setAddEmail(""); setAddPw(""); setAddRole("user"); setAddEnabled(true);
-      await load();
-    }catch(e){ alert(e.message); } finally{ setBusy(false); }
+  function clearForm(){
+    setFormMode("add");
+    setFormId(null);
+    setFormEmail("");
+    setFormPw("");
+    setFormRole("user");
+    setFormEnabled(true);
   }
 
   function startEdit(u){
-    setEditingId(u.id);
-    setEditEmail(u.email);
-    setEditPw("");
-  }
-  function cancelEdit(){
-    setEditingId(null);
-    setEditEmail("");
-    setEditPw("");
+    setFormMode("edit");
+    setFormId(u.id);
+    setFormEmail(u.email);
+    setFormPw("");
+    setFormRole(u.role);
+    setFormEnabled(!!u.enabled);
   }
 
-  async function saveRow(u){
+  async function onSubmit(){
+    setErr("");
     setBusy(true);
     try{
-      const body = {
-        email: editEmail !== u.email ? editEmail : undefined,
-        role: u.role,
-        enabled: u.enabled,
-        new_password: editPw.length >= 8 ? editPw : undefined
-      };
-      const r = await fetch(`/api/users/${u.id}`, {
-        method:"PATCH", headers:{ "Content-Type":"application/json" },
-        credentials:"include", body: JSON.stringify(body)
-      });
-      const j = await r.json().catch(()=>({}));
-      if(!r.ok) throw new Error(j.detail||"Update failed");
-      cancelEdit();
-      await load();
-    }catch(e){ alert(e.message); } finally{ setBusy(false); }
+      if(!isAdmin){
+        // Non-admins only have self password change (handled elsewhere),
+        // but we shouldn’t even render this form in that case.
+        throw new Error("Forbidden");
+      }
+
+      if(formMode === "add"){
+        if(!formEmail) throw new Error("Email required");
+        if(!formPw || formPw.length < 8) throw new Error("Password must be at least 8 characters");
+        const r = await fetch("/api/users", {
+          method:"POST", credentials:"include",
+          headers:{ "Content-Type":"application/json" },
+          body: JSON.stringify({
+            email: formEmail,
+            password: formPw,
+            role: formRole,
+            enabled: formEnabled
+          })
+        });
+        const j = await r.json().catch(()=>({}));
+        if(!r.ok) throw new Error(j.detail || j.error || "Create failed");
+        clearForm();
+        await loadUsers();
+      } else { // edit
+        if(!formId) throw new Error("No user selected");
+        const body = {
+          email: formEmail,
+          role: formRole,
+          enabled: formEnabled
+        };
+        if(formPw && formPw.length >= 8){
+          body.new_password = formPw;
+        }
+        const r = await fetch(`/api/users/${formId}`, {
+          method:"PATCH", credentials:"include",
+          headers:{ "Content-Type":"application/json" },
+          body: JSON.stringify(body)
+        });
+        const j = await r.json().catch(()=>({}));
+        if(!r.ok) throw new Error(j.detail || j.error || "Update failed");
+        clearForm();
+        await loadUsers();
+      }
+    }catch(e){
+      setErr(String(e.message||e));
+      // Optionally also alert:
+      // alert(String(e.message||e));
+    }finally{
+      setBusy(false);
+    }
   }
 
+  // Self-only password change for non-admins
+  const [selfPw, setSelfPw] = useState("");
   async function selfChangePw(){
-    if (selfPw.length < 8) { alert("Password must be at least 8 characters"); return; }
-    setBusy(true);
     try{
-      const r = await fetch(`/api/users/change-password`, {
-        method:"POST", headers:{ "Content-Type":"application/json" },
-        credentials:"include", body: JSON.stringify({ new_password: selfPw })
+      if(selfPw.length < 8) throw new Error("Password must be at least 8 characters");
+      const r = await fetch("/api/users/change-password", {
+        method:"POST", credentials:"include",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ new_password: selfPw })
       });
       const j = await r.json().catch(()=>({}));
-      if(!r.ok) throw new Error(j.detail||"Change failed");
+      if(!r.ok) throw new Error(j.detail || j.error || "Change failed");
       setSelfPw("");
       alert("Password updated.");
-    }catch(e){ alert(e.message); } finally{ setBusy(false); }
+    }catch(e){ setErr(String(e.message||e)); }
   }
 
   return (
@@ -111,35 +134,39 @@ export default function UsersPage(){
 
       {!isAdmin ? (
         <div className="card" style={{maxWidth:520}}>
-          {rows[0] &&
-          <div style={{display:"grid",gap:8}}>
-            <div><b>Email:</b> {rows[0].email}</div>
-            <div><b>Role:</b> {rows[0].role}</div>
-            <label>New password
-              <input type="password" value={selfPw} onChange={e=>setSelfPw(e.target.value)} placeholder="at least 8 chars" />
-            </label>
-            <button className="btn" onClick={selfChangePw} disabled={busy}>Change my password</button>
-          </div>}
+          {rows[0] && (
+            <div style={{display:"grid",gap:8}}>
+              <div><b>Email:</b> {rows[0].email}</div>
+              <div><b>Role:</b> {rows[0].role}</div>
+              <label>New password
+                <input type="password" value={selfPw} onChange={e=>setSelfPw(e.target.value)} placeholder="at least 8 chars" />
+              </label>
+              <button className="btn" onClick={selfChangePw}>Change my password</button>
+            </div>
+          )}
         </div>
       ) : (
         <>
-          {/* Add user form */}
+          {/* Unified Add / Edit form */}
           <div className="card" style={{marginBottom:12}}>
-            <h3 style={{marginTop:0}}>Add User</h3>
-            <div style={{display:"grid",gridTemplateColumns:"1.4fr 1fr 1fr 1fr auto",gap:8,alignItems:"center"}}>
-              <input placeholder="email@example.com" value={addEmail} onChange={e=>setAddEmail(e.target.value)} />
-              <input type="password" placeholder="password (≥ 8)" value={addPw} onChange={e=>setAddPw(e.target.value)} />
-              <select value={addRole} onChange={e=>setAddRole(e.target.value)}>
+            <h3 style={{marginTop:0}}>{formMode === "add" ? "Add User" : "Update User"}</h3>
+            <div style={{display:"grid",gridTemplateColumns:"1.5fr 1fr 1fr 1fr auto",gap:8,alignItems:"center"}}>
+              <input placeholder="email@example.com" value={formEmail} onChange={e=>setFormEmail(e.target.value)} />
+              <input type="password" placeholder={formMode==="add" ? "password (≥ 8)" : "(optional) new pw (≥ 8)"} value={formPw} onChange={e=>setFormPw(e.target.value)} />
+              <select value={formRole} onChange={e=>setFormRole(e.target.value)}>
                 {ROLE_OPTIONS.map(r=><option key={r} value={r}>{r}</option>)}
               </select>
               <label style={{display:"flex",gap:6,alignItems:"center"}}>
-                <input type="checkbox" checked={addEnabled} onChange={e=>setAddEnabled(e.target.checked)} /> Enabled
+                <input type="checkbox" checked={formEnabled} onChange={e=>setFormEnabled(e.target.checked)} /> Enabled
               </label>
-              <button className="btn" onClick={addUser} disabled={busy}>Add</button>
+              <div style={{display:"flex",gap:8}}>
+                <button className="btn" onClick={onSubmit} disabled={busy}>{formMode==="add" ? "Add" : "Update"}</button>
+                {formMode==="edit" && <button className="btn" onClick={clearForm}>Clear</button>}
+              </div>
             </div>
           </div>
 
-          {/* Users table */}
+          {/* Users table (read-only, with single Edit button) */}
           <div className="card">
             <table style={{width:"100%", borderCollapse:"collapse"}}>
               <thead>
@@ -151,50 +178,16 @@ export default function UsersPage(){
                 </tr>
               </thead>
               <tbody>
-                {rows.map(u=>{
-                  const editing = editingId === u.id;
-                  return (
-                    <tr key={u.id}>
-                      <td style={{borderBottom:"1px solid #f1f5f9",padding:"6px"}}>
-                        {!editing ? (
-                          u.email
-                        ) : (
-                          <input value={editEmail} onChange={e=>setEditEmail(e.target.value)} />
-                        )}
-                      </td>
-                      <td style={{borderBottom:"1px solid #f1f5f9",padding:"6px"}}>
-                        <select
-                          value={u.role}
-                          onChange={e=>setRows(rows.map(x=>x.id===u.id?{...x, role:e.target.value}:x))}
-                          disabled={!isAdmin}
-                        >
-                          {ROLE_OPTIONS.map(r=><option key={r} value={r}>{r}</option>)}
-                        </select>
-                      </td>
-                      <td style={{borderBottom:"1px solid #f1f5f9",padding:"6px"}}>
-                        <input
-                          type="checkbox"
-                          checked={u.enabled}
-                          onChange={e=>setRows(rows.map(x=>x.id===u.id?{...x, enabled:e.target.checked}:x))}
-                        />
-                      </td>
-                      <td style={{borderBottom:"1px solid #f1f5f9",padding:"6px"}}>
-                        {!editing ? (
-                          <div style={{display:"flex",gap:8}}>
-                            <button className="btn" onClick={()=>startEdit(u)}>Edit</button>
-                            <button className="btn" onClick={()=>saveRow(u)} disabled={busy}>Save</button>
-                          </div>
-                        ) : (
-                          <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                            <input type="password" placeholder="(optional) new password (≥8)" value={editPw} onChange={e=>setEditPw(e.target.value)} />
-                            <button className="btn" onClick={()=>saveRow(u)} disabled={busy}>Save</button>
-                            <button className="btn" onClick={cancelEdit}>Cancel</button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {rows.map(u=>(
+                  <tr key={u.id}>
+                    <td style={{borderBottom:"1px solid #f1f5f9",padding:"6px"}}>{u.email}</td>
+                    <td style={{borderBottom:"1px solid #f1f5f9",padding:"6px"}}>{u.role}</td>
+                    <td style={{borderBottom:"1px solid #f1f5f9",padding:"6px"}}>{u.enabled ? "Enabled" : "Disabled"}</td>
+                    <td style={{borderBottom:"1px solid #f1f5f9",padding:"6px"}}>
+                      <button className="btn" onClick={()=>startEdit(u)}>Edit</button>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
