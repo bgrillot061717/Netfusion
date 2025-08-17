@@ -6,6 +6,22 @@ from passlib.context import CryptContext
 from .auth import require_min_role, get_current_user
 from .db import connect, _has_col
 
+from pydantic import BaseModel
+from typing import Optional
+
+class UserCreate(BaseModel):
+    email: str
+    password: str
+    role: str = "user"
+    enabled: bool = True
+
+class UserUpdate(BaseModel):
+    password: Optional[str] = None
+    role: Optional[str] = None
+    enabled: Optional[bool] = None
+
+
+
 router = APIRouter(prefix="/api/users", tags=["users"])
 
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
